@@ -1,14 +1,21 @@
 import json
 import os
 import re
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
-from groq import Groq
+from google import genai
+from google.genai import types
 from pypdf import PdfReader
 
-load_dotenv()
-MODEL = "llama-3.3-70b-versatile"
+BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / ".env")
+
+
+def get_model_name() -> str:
+    return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
 
 ALIASES = {
     "js": "javascript", "reactjs": "react", "react.js": "react",
@@ -16,17 +23,26 @@ ALIASES = {
     "sklearn": "scikit-learn", "postgres": "postgresql",
     "large language models": "llm", "llms": "llm",
     "retrieval augmented generation": "rag", "restful api": "rest api",
-    "rest apis": "rest api", "apis": "rest api", "amazon web services": "aws",
-    "github": "git", "cicd": "ci/cd",
+    "rest apis": "rest api", "apis": "rest api", "api": "rest api",
+    "amazon web services": "aws", "github": "git", "cicd": "ci/cd",
+    "fast api": "fastapi", "py": "python",
 }
 
 
 def get_client():
-    key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY", None)
+    key = os.getenv("GEMINI_API_KEY")
     if not key:
-        st.error("GROQ_API_KEY not found. Add it to .env or Streamlit secrets.")
+        try:
+            key = st.secrets["GEMINI_API_KEY"]
+        except Exception:
+            key = None
+    if not key:
+        st.error(
+            "GEMINI_API_KEY not found. Add it to your .env file (local) "
+            "or Streamlit secrets (deployed)."
+        )
         st.stop()
-    return Groq(api_key=key)
+    return genai.Client(api_key=key.strip())
 
 
 def normalize(skill: str) -> str:
@@ -41,23 +57,25 @@ def read_resume(uploaded) -> str:
     return uploaded.read().decode("utf-8", errors="ignore")
 
 
-def extract_skills(client, text: str) -> list[str]:
+def extract_skills(client, text: str) -> list:
     prompt = (
         "Extract technical skills from this resume. Return ONLY JSON like "
         '{"skills": ["python", "sql"]}. Use short lowercase names, no duplicates, '
         "only skills explicitly supported by the text.\n\nRESUME:\n" + text[:8000]
     )
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0,
+    resp = client.models.generate_content(
+        model=get_model_name(),
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0,
+        ),
     )
-    data = json.loads(resp.choices[0].message.content)
-    return sorted({normalize(s) for s in data.get("skills", [])})
+    data = json.loads(resp.text)
+    return sorted({normalize(s) for s in data.get("skills", []) if isinstance(s, str)})
 
 
-def match_role(candidate: list[str], required: list[str]):
+def match_role(candidate: list, required: list):
     cand = set(candidate)
     matched = [r for r in required if r in cand]
     missing = [r for r in required if r not in cand]
@@ -65,7 +83,7 @@ def match_role(candidate: list[str], required: list[str]):
     return score, matched, missing
 
 
-def recommend_modules(missing: list[str], modules: list[dict], top_n: int = 3):
+def recommend_modules(missing: list, modules: list, top_n: int = 3):
     ranked = []
     for m in modules:
         covered = [s for s in m["skills"] if s in missing]
@@ -79,24 +97,29 @@ def explain_plan(client, role, score, missing, recs) -> str:
     rec_text = ", ".join(m["name"] for _, m, _ in recs) or "none"
     prompt = (
         f"A learner is targeting the role '{role}' with a {score}% skill match. "
-        f"Missing skills: {', '.join(missing) or 'none'}. Recommended modules: {rec_text}. "
+        f"Missing skills: {', '.join(missing) or 'none'}. "
+        f"Recommended modules: {rec_text}. "
         "Write a short, encouraging 3-4 sentence learning plan. Do not invent facts."
     )
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.4,
+    resp = client.models.generate_content(
+        model=get_model_name(),
+        contents=prompt,
+        config=types.GenerateContentConfig(temperature=0.4),
     )
-    return resp.choices[0].message.content
+    return resp.text
 
 
+# ---------------- UI ----------------
 st.set_page_config(page_title="Skill-Gap Engine", page_icon="🎯")
 st.title("🎯 Skill-Gap & Job-Match Engine")
-st.caption("Proof of concept for Cynbit: BitElevate training x Cynbit Studio job matching")
+st.caption(
+    "Proof of concept for Cynbit: connecting BitElevate training "
+    "with Cynbit Studio job matching"
+)
 
-with open("data/modules.json", encoding="utf-8") as f:
+with open(BASE_DIR / "data" / "modules.json", encoding="utf-8") as f:
     MODULES = json.load(f)
-with open("data/roles.json", encoding="utf-8") as f:
+with open(BASE_DIR / "data" / "roles.json", encoding="utf-8") as f:
     ROLES = json.load(f)
 
 role = st.selectbox("Target role", list(ROLES.keys()))
@@ -105,13 +128,19 @@ uploaded = st.file_uploader("Upload resume (PDF or TXT)", type=["pdf", "txt"])
 if uploaded and st.button("Analyze"):
     client = get_client()
     with st.spinner("Reading resume and extracting skills..."):
-        text = read_resume(uploaded)
-        skills = extract_skills(client, text)
-
-    # Human-in-the-loop: let the user correct extracted skills
-    st.session_state["skills"] = skills
+        try:
+            text = read_resume(uploaded)
+            if not text.strip():
+                st.error("Could not read any text from this file (maybe a scanned PDF).")
+                st.stop()
+            st.session_state["skills"] = extract_skills(client, text)
+            st.session_state.pop("plan", None)
+        except Exception as e:
+            st.error(f"Something went wrong: {e}")
+            st.stop()
 
 if "skills" in st.session_state:
+    # Human-in-the-loop: user can correct the extracted skills
     edited = st.text_area(
         "Extracted skills (edit if wrong, comma separated)",
         ", ".join(st.session_state["skills"]),
@@ -140,4 +169,12 @@ if "skills" in st.session_state:
 
     if st.button("Generate learning plan"):
         client = get_client()
-        st.write(explain_plan(client, role, score, missing, recs))
+        with st.spinner("Writing your plan..."):
+            try:
+                st.session_state["plan"] = explain_plan(client, role, score, missing, recs)
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+
+    if "plan" in st.session_state:
+        st.subheader("🗺️ Learning plan")
+        st.write(st.session_state["plan"])
