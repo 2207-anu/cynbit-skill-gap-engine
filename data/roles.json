@@ -1,0 +1,7 @@
+{
+  "AI/ML Engineer": ["python", "machine learning", "scikit-learn", "pandas", "numpy", "llm", "prompt engineering", "rag", "sql", "git", "docker"],
+  "Full-Stack Developer": ["html", "css", "javascript", "react", "node.js", "rest api", "sql", "git"],
+  "Python Backend Developer": ["python", "flask", "fastapi", "rest api", "postgresql", "docker", "git", "sql"],
+  "Data Analyst": ["python", "sql", "pandas", "data visualization", "statistics", "excel"],
+  "Cloud/DevOps Engineer": ["aws", "docker", "ci/cd", "linux", "git", "cloud computing"]
+}

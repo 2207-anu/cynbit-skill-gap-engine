@@ -1,0 +1,11 @@
+[
+  {"name": "Python Fundamentals", "level": "Beginner", "weeks": 4, "skills": ["python", "oop", "git"]},
+  {"name": "Full-Stack Web Development", "level": "Intermediate", "weeks": 10, "skills": ["html", "css", "javascript", "react", "node.js", "rest api", "sql"]},
+  {"name": "Backend with Python and Flask/FastAPI", "level": "Intermediate", "weeks": 6, "skills": ["flask", "fastapi", "rest api", "postgresql", "docker"]},
+  {"name": "Data Science with Python", "level": "Intermediate", "weeks": 8, "skills": ["pandas", "numpy", "data visualization", "statistics", "sql"]},
+  {"name": "Machine Learning Foundations", "level": "Intermediate", "weeks": 8, "skills": ["machine learning", "scikit-learn", "model evaluation", "feature engineering"]},
+  {"name": "Generative AI and LLM Applications", "level": "Advanced", "weeks": 6, "skills": ["llm", "prompt engineering", "rag", "langchain", "vector database", "langgraph"]},
+  {"name": "Cloud Computing with AWS", "level": "Intermediate", "weeks": 6, "skills": ["aws", "cloud computing", "docker", "ci/cd", "linux"]},
+  {"name": "Cybersecurity Essentials", "level": "Beginner", "weeks": 6, "skills": ["network security", "linux", "owasp", "cryptography"]},
+  {"name": "Digital Marketing", "level": "Beginner", "weeks": 5, "skills": ["seo", "content marketing", "google analytics", "social media marketing"]}
+]
